@@ -58,6 +58,9 @@ MAX_OUTPUT_FAST = _env_int("DEEPSEEK_MAX_OUTPUT_FAST", 2048)
 DEEP_QUERIES = max(1, min(6, _env_int("DEEPSEEK_DEEP_QUERIES", 4)))
 DEBUG = _env("DEEPSEEK_DEBUG", "0") == "1"
 
+# ????????? Content-Length?????????? NDJSON ????????
+_USE_NDJSON = False
+
 SYS_SEARCH = (
     "你是高准确度联网搜索助手。使用 web_search 工具回答用户问题，必须："
     "1) 搜索后用真实来源核实关键事实，不凭记忆作答；"
@@ -401,14 +404,27 @@ def _error(rid, code, message):
 
 def write_frame(stream, obj):
     payload = json.dumps(obj, ensure_ascii=False).encode("utf-8")
-    stream.write(f"Content-Length: {len(payload)}\r\n\r\n".encode("utf-8"))
-    stream.write(payload)
+    if _USE_NDJSON:
+        stream.write(payload + b"\n")
+    else:
+        stream.write(f"Content-Length: {len(payload)}\r\n\r\n".encode("utf-8"))
+        stream.write(payload)
     stream.flush()
 
 def read_frame(stream):
     first = stream.readline()
     if not first:
         return None
+    line = first.strip()
+    if line.startswith(b"{"):
+        # NDJSON ????????? JSON-RPC ????? MCP SDK / Codex / mcporter?
+        global _USE_NDJSON
+        try:
+            msg = json.loads(line.decode("utf-8"))
+            _USE_NDJSON = True
+            return msg
+        except json.JSONDecodeError:
+            pass
     headers = {}
     content_length = 0
     if first.strip().lower().startswith(b"content-length:"):
