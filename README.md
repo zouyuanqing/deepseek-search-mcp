@@ -42,10 +42,13 @@ DeepSeek V4-Flash（284B MoE，搜索 + 阅读 + 多轮核实 + 带来源引用�
 | 工具 | 模式 | 适用场景 | 典型耗时 |
 |---|---|---|---|
 | `web_search` | 标准 | 日常查询、新闻、事实确认 | 30–60s |
+| `web_search_fast` | 快速 | 时效敏感的简单查询、快查 | 3–8s |
 | `web_search_deep` | 深度 | 事实核查、研究报告、技术调研 | 2–4 分钟 |
 | `health` | 诊断 | 验证 API Key 与搜索链路 | 30–60s |
 
 **`web_search`**：模型自动规划多次搜索 → 阅读并核实来源 → 返回结构化、带来源链接的答案。
+
+**`web_search_fast`**：低推理强度（`reasoning: {"effort": "low"}`）+ 精简指令 + 小输出上限，通常 1–2 轮搜索后直接给出简洁答案。实测相比标准模式提速约 5 倍（5.4s vs 29.5s），答案仍带来源链接。
 
 **`web_search_deep`**：先生成 3–6 个子查询（`DEEPSEEK_DEEP_QUERIES` 控制）分别检索（每个子查询独立搜索、独立来源）→ 由 V4-Flash 交叉核验 → 输出综合答案。实测能主动标注"来源冲突"与"信息不足"的存疑点。
 
@@ -69,6 +72,12 @@ python deepseek_web_search_mcp.py
 - **参数**：`query`（必填，string）— 要搜索的问题或主题，建议写成完整问题以提高相关性
 - **返回**：JSON，含 `answer`（带来源链接的综合答案）、`sources`（提取的引用 URL 列表）、`elapsed_s`、`usage`
 
+### `web_search_fast`
+
+- **参数**：`query`（必填，string）— 要搜索的问题或主题
+- **返回**：JSON，含 `answer`（简洁答案）、`mode: "fast"`、`sources`、`elapsed_s`、`usage`
+- **实现**：`reasoning: {"effort": "low"}` 降低推理 token 消耗 + 精简系统指令 + 输出上限默认 2048
+
 ### `web_search_deep`
 
 - **参数**：`query`（必填，string）— 需要深度调研的问题，需具体、可拆解
@@ -88,6 +97,7 @@ python deepseek_web_search_mcp.py
 | `DEEPSEEK_MODEL` | | `deepseek-v4-flash` | 模型名（Responses API 目前仅支持该模型） |
 | `DEEPSEEK_TIMEOUT_S` | | `180` | HTTP 超时（秒）。深搜模式多轮调用耗时较长，建议 ≥180 |
 | `DEEPSEEK_MAX_OUTPUT` | | `8192` | 单轮搜索合成答案的最大输出 token |
+| `DEEPSEEK_MAX_OUTPUT_FAST` | | `2048` | 快速模式的最大输出 token |
 | `DEEPSEEK_DEEP_QUERIES` | | `4` | 深搜子查询数量（范围 1–6） |
 | `DEEPSEEK_DEBUG` | | `0` | 设为 `1` 输出调试日志到 stderr |
 
@@ -143,19 +153,20 @@ python bench_search.py --deep "你的调研问题"
 
 实测（2026-08-09，DeepSeek V4-Flash 正式版）三方搜索能力对比：
 
-| 维度 | 内置 WebSearch | Tavily MCP | `web_search` | `web_search_deep` |
-|---|---|---|---|---|
-| 耗时 | ~3s | 1–7s | 29.5s | 245s |
-| 输出 | 5 条摘要 | 原始片段 | 带引用综合答案 | 交叉核验报告 |
-| 来源甄别 | 无 | 无 | 有 | 有（主动标注存疑点） |
+| 维度 | 内置 WebSearch | Tavily MCP | `web_search` | `web_search_fast` | `web_search_deep` |
+|---|---|---|---|---|---|
+| 耗时 | ~3s | 1–7s | 29.5s | **5.4s** | 245s |
+| 输出 | 5 条摘要 | 原始片段 | 带引用综合答案 | 带引用简洁答案 | 交叉核验报告 |
+| 来源甄别 | 无 | 无 | 有 | 有 | 有（主动标注存疑点） |
 
 要点：
 
 - **Tavily MCP** 响应最快，但只做"检索不思考"：实测中把过时价格与官方价格并列返回而未甄别，准确性依赖使用方自行判断。
 - **`web_search`** 返回带来源链接的综合答案，多轮搜索自动核实关键事实。
+- **`web_search_fast`** 与标准模式同架构，仅降推理强度、精简指令与输出上限，实测 5.4s（提速约 5.5 倍），答案仍带来源链接与时效性提示。
 - **`web_search_deep`** 质量最高：交叉验证多来源，能主动指出"某信息系某媒体披露、官方未点名"等存疑点；代价是耗时明显更长。
 
-**结论**：日常快查建议用 Tavily 或内置搜索；需要高准确度的调研与事实核查场景，建议使用 `web_search_deep`。
+**结论**：对时效敏感的简单快查用 `web_search_fast`；日常查询用 Tavily 或内置搜索；需要高准确度的调研与事实核查场景，建议使用 `web_search_deep`。
 
 ## 已知限制
 

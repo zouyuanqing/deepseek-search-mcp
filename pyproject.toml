@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "deepseek-search-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "DeepSeek V4-Flash based web search MCP server: web_search (standard) + web_search_deep (multi-query cross-verified research)"
 readme = "README.md"
 requires-python = ">=3.9"

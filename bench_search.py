@@ -114,13 +114,13 @@ def extract_text(resp):
     return "\n".join(parts)
 
 
-def bench_tavily(query):
+def bench_tavily(query, depth="advanced"):
     proc = spawn("npx.cmd", ["-y", "tavily-mcp"], {"TAVILY_API_KEY": TAVILY_KEY})
     c = JsonlClient(proc)
     try:
         init_mcp(c)
         t0 = time.time()
-        resp = c.call("tavily_search", {"query": query, "search_depth": "advanced", "max_results": 5}, timeout=120)
+        resp = c.call("tavily_search", {"query": query, "search_depth": depth, "max_results": 5}, timeout=120)
         dt = time.time() - t0
         return dt, extract_text(resp)
     finally:
@@ -131,12 +131,12 @@ def bench_tavily(query):
             proc.kill()
 
 
-def bench_deepseek(query, deep=False):
+def bench_deepseek(query, mode="standard"):
     proc = spawn(sys.executable, [DS_SCRIPT], {"DEEPSEEK_API_KEY": DEEPSEEK_KEY})
     c = Client(proc)
     try:
         init_mcp(c)
-        tool = "web_search_deep" if deep else "web_search"
+        tool = {"standard": "web_search", "fast": "web_search_fast", "deep": "web_search_deep"}[mode]
         t0 = time.time()
         resp = c.call(tool, {"query": query}, timeout=300)
         dt = time.time() - t0
@@ -150,11 +150,23 @@ def bench_deepseek(query, deep=False):
 
 
 def main():
-    # 支持 --deep 标记 + query；--deep 可放任意位置
+    # 支持 --deep/--fast 标记 + query；标记可放任意位置
     argv = sys.argv[1:]
     deep = "--deep" in argv
+    fast = "--fast" in argv
     query = next((a for a in argv if not a.startswith("--")), "DeepSeek V4-Flash API pricing per million tokens")
     print(f"# 对比查询: {query}\n", flush=True)
+
+    if fast:
+        print("=== [Tavily MCP] tavily_search (fast) ===", flush=True)
+        t0, r0 = bench_tavily(query, depth="fast")
+        print(f"耗时 {t0:.1f}s:", flush=True)
+        print(r0[:3500], flush=True)
+        print("\n=== [DeepSeek MCP] web_search_fast ===", flush=True)
+        t1, r1 = bench_deepseek(query, mode="fast")
+        print(f"耗时 {t1:.1f}s:", flush=True)
+        print(r1[:3500], flush=True)
+        return
 
     print("=== [Tavily MCP] tavily_search (advanced) ===", flush=True)
     t0, r0 = bench_tavily(query)
@@ -162,7 +174,7 @@ def main():
     print(r0[:3500], flush=True)
 
     print("\n=== [DeepSeek MCP] web_search" + ("_deep" if deep else "") + " ===", flush=True)
-    t1, r1 = bench_deepseek(query, deep)
+    t1, r1 = bench_deepseek(query, mode="deep" if deep else "standard")
     print(f"耗时 {t1:.1f}s:", flush=True)
     print(r1[:3500], flush=True)
 

@@ -16,8 +16,9 @@
 | T2 | stdio 协议握手 `initialize` | `test_stdio.py` | ✅ 通过 |
 | T3 | `tools/list` 工具清单 | `test_stdio.py` | ✅ 通过 |
 | T4 | `tools/call` `web_search` | `test_stdio.py` | ✅ 通过 |
-| T5 | `tools/call` `web_search_deep` | `test_stdio.py --deep` | ✅ 通过 |
-| T6 | 同题三方对比 | `bench_search.py` | ✅ 完成 |
+| T5 | `tools/call` `web_search_fast` | `test_stdio.py --fast` | ✅ 通过 |
+| T6 | `tools/call` `web_search_deep` | `test_stdio.py --deep` | ✅ 通过 |
+| T7 | 快速模式基准（vs Tavily fast） | `bench_search.py --fast` | ✅ 完成 |
 
 ## 2. 测试用例明细
 
@@ -58,10 +59,20 @@ DEEPSEEK_API_KEY=sk-... python deepseek_web_search_mcp.py --health
 | Tavily MCP `tavily_search` | 1.3–5.9s | 返回 2 篇新闻报道原始内容（TVB、大纪元），无综合无核验 |
 | 本项目 `web_search_deep` | 245s | 交叉核验多来源，主动标注存疑点："Muse Spark 1.1 模型名系 The Information 援引知情人士披露，Meta 官方声明中未点名具体模型" |
 
-### 3.3 结论
+### 3.3 问题三（快速模式）：DeepSeek V4-Flash API 定价（`--fast`）
+
+| 方案 | 耗时 | 结果质量 |
+|---|---|---|
+| Tavily MCP `tavily_search`（fast） | **1.7s** | 返回原始片段；仍含过时信息（未标注"2026-08-06 官方预告大幅调价"） |
+| 本项目 `web_search_fast` | **5.4s** | 简洁带引用答案，包含时效性提示（"DeepSeek 已于 8 月预告大幅上调 API 价格，以上为当前价格"） |
+
+快速模式实现：`reasoning: {"effort": "low"}` + 精简系统指令 + 输出上限 2048。对比标准模式（29.5s / reasoning_tokens 2454），快速模式 5.4s / reasoning_tokens 50，**提速约 5.5 倍**，输出 token 降约 87%（3830 → 500），成本随之显著下降。
+
+### 3.4 结论
 
 - **Tavily**：快但"检索不思考"，准确性依赖使用方判断，适合日常快查。
 - **本项目 `web_search`**：带引用综合答案，多轮搜索自动核实。
+- **本项目 `web_search_fast`**：约 5 倍提速、成本大降，仍带引用与时效性提示，适合对延迟敏感的快查。
 - **本项目 `web_search_deep`**：准确性最高，适合事实核查与调研；代价是耗时 2–4 分钟。
 
 ## 4. 复现方式

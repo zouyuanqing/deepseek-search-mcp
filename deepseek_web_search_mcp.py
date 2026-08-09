@@ -13,8 +13,9 @@ DeepSeek Web Search MCP - 基于 DeepSeek V4-Flash 的联网搜索 MCP Server
       ▼
   DeepSeek V4-Flash（284B MoE，搜索 + 阅读 + 多轮核实 + 带来源引用合成）
 
-两个工具：
+三个工具：
   - web_search          : 标准搜索。DeepSeek V4-Flash 自动规划多次搜索、核实来源、返回带引用的答案。
+  - web_search_fast     : 快速搜索（低延迟）。低推理强度 + 精简指令，1-2 轮搜索后直接给出简洁答案。
   - web_search_deep     : 深度搜索（高准确性）。先生成 3-5 个子查询并行检索，再由 V4-Flash 交叉核验综合，
                           适用于事实核查、研究报告、技术调研等对准确性要求高的场景。
 
@@ -53,6 +54,7 @@ BASE_URL = _env("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/")
 MODEL = _env("DEEPSEEK_MODEL", "deepseek-v4-flash")
 TIMEOUT_S = _env_int("DEEPSEEK_TIMEOUT_S", 180)
 MAX_OUTPUT = _env_int("DEEPSEEK_MAX_OUTPUT", 8192)
+MAX_OUTPUT_FAST = _env_int("DEEPSEEK_MAX_OUTPUT_FAST", 2048)
 DEEP_QUERIES = max(1, min(6, _env_int("DEEPSEEK_DEEP_QUERIES", 4)))
 DEBUG = _env("DEEPSEEK_DEBUG", "0") == "1"
 
@@ -62,6 +64,14 @@ SYS_SEARCH = (
     "2) 优先采用权威来源（官方文档、新闻社、学术来源），多来源交叉验证；"
     "3) 回答末尾列出引用的来源链接；"
     "4) 信息不足或来源冲突时明确说明不确定性，不要编造。"
+)
+
+SYS_SEARCH_FAST = (
+    "你是快速联网搜索助手。用户对响应速度有要求，请："
+    "1) 尽量用最少的搜索轮次（通常 1-2 次）获取足够信息后直接回答；"
+    "2) 答案简洁扼要，聚焦核心信息，不做冗余展开；"
+    "3) 回答末尾附上引用的来源链接；"
+    "4) 信息不足时如实说明，不要编造。"
 )
 
 SYS_DEEP_PLAN = (
@@ -139,17 +149,20 @@ def _extract_urls(text):
     return out
 
 
-def web_search_call(query):
-    """调用 DeepSeek Responses API 原生联网搜索，返回 (答案正文, 引用URL列表, usage)。"""
+def web_search_call(query, fast=False):
+    """调用 DeepSeek Responses API 原生联网搜索，返回 (答案正文, 引用URL列表, usage)。
+    fast=True 时使用低推理强度 + 精简指令 + 小输出上限，降低延迟。"""
     body = {
         "model": MODEL,
-        "instructions": SYS_SEARCH,
+        "instructions": SYS_SEARCH_FAST if fast else SYS_SEARCH,
         "input": query,
         "tools": [{"type": "web_search"}],
         "tool_choice": "auto",
         "stream": False,
-        "max_output_tokens": MAX_OUTPUT,
+        "max_output_tokens": MAX_OUTPUT_FAST if fast else MAX_OUTPUT,
     }
+    if fast:
+        body["reasoning"] = {"effort": "low"}
     status, resp = _post("/v1/responses", body)
     if status != 200:
         raise DeepSeekError(resp.get("error", {}).get("message", f"HTTP {status}"))
@@ -219,6 +232,23 @@ def tool_web_search(args):
     answer, urls, usage = web_search_call(query)
     return {
         "query": query,
+        "answer": answer,
+        "sources": urls,
+        "elapsed_s": round(time.time() - t0, 1),
+        "usage": usage,
+    }
+
+
+def tool_web_search_fast(args):
+    """快速联网搜索：低推理强度 + 精简指令，优先响应速度。"""
+    query = (args.get("query") or "").strip()
+    if not query:
+        raise DeepSeekError("参数 query 不能为空")
+    t0 = time.time()
+    answer, urls, usage = web_search_call(query, fast=True)
+    return {
+        "query": query,
+        "mode": "fast",
         "answer": answer,
         "sources": urls,
         "elapsed_s": round(time.time() - t0, 1),
@@ -297,6 +327,7 @@ def log(*args):
 
 HANDLERS = {
     "web_search": tool_web_search,
+    "web_search_fast": tool_web_search_fast,
     "web_search_deep": tool_web_search_deep,
     "health": tool_health,
 }
@@ -314,6 +345,23 @@ TOOLS = [
                 "query": {
                     "type": "string",
                     "description": "要搜索的问题或主题，建议写成完整问题以提高相关性（例：\"2026年8月特斯拉股价走势如何？\"）",
+                }
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "web_search_fast",
+        "description": (
+            "联网搜索（快速模式）。使用低推理强度 + 精简指令优先响应速度，"
+            "通常 1-2 轮搜索后直接给出简洁答案。适合对时效敏感、无需深度核验的查询。"
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "要搜索的问题或主题（例：\"2026年8月9日美元兑人民币汇率\"）",
                 }
             },
             "required": ["query"],

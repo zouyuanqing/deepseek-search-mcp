@@ -86,8 +86,12 @@ def main():
         call({"jsonrpc": "2.0", "id": 4, "method": "tools/call",
               "params": {"name": "web_search", "arguments": {"query": "2026年8月9日之前的最近一周，AI 行业发生了什么重要事件？"}}},
              "tools/call web_search")
-        if "--deep" in sys.argv:
+        if "--fast" in sys.argv:
             call({"jsonrpc": "2.0", "id": 5, "method": "tools/call",
+                  "params": {"name": "web_search_fast", "arguments": {"query": "2026年8月9日美元兑人民币汇率是多少？"}}},
+                 "tools/call web_search_fast")
+        if "--deep" in sys.argv:
+            call({"jsonrpc": "2.0", "id": 6, "method": "tools/call",
                   "params": {"name": "web_search_deep", "arguments": {"query": "DeepSeek V4-Flash 正式版相比预览版有哪些能力变化？价格如何？"}}},
                  "tools/call web_search_deep")
     finally:
