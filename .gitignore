@@ -1,0 +1,16 @@
+# 缓存 / 生成物
+__pycache__/
+*.pyc
+.cache/
+generated/
+
+# 环境与密钥（禁止提交）
+.env
+.env.*
+*.key
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
