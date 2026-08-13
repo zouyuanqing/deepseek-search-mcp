@@ -4,12 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "deepseek-search-mcp"
-version = "0.2.0"
-description = "DeepSeek V4-Flash based web search MCP server: web_search (standard) + web_search_deep (multi-query cross-verified research)"
+version = "0.3.0"
+description = "Web search MCP server: DeepSeek V4-Flash native search + Xiaomi MiMo raw search + fetch_page, with auto fallback chain"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 dependencies = []
 
 [tool.setuptools]
+packages = ["mcp_search"]
 py-modules = ["deepseek_web_search_mcp"]

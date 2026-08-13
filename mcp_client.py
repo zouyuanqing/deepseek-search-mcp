@@ -22,6 +22,7 @@ def main():
     ap.add_argument("--list", action="store_true", help="只列工具清单")
     ap.add_argument("--jsonl", action="store_true", help="使用 NDJSON 行协议（新版 MCP SDK）")
     ap.add_argument("--env", action="append", default=[], help="KEY=VALUE 附加环境变量")
+    ap.add_argument("--timeout", type=int, default=300, help="响应超时秒数（深搜建议 600+）")
     args = ap.parse_args()
 
     env = dict(os.environ)
@@ -100,13 +101,13 @@ def main():
             return
 
         if args.params_file:
-            with open(args.params_file, "r", encoding="utf-8") as f:
+            with open(args.params_file, "r", encoding="utf-8-sig") as f:
                 params = json.load(f)
         else:
             params = json.loads(args.params or "{}")
         send({"jsonrpc": "2.0", "id": 4, "method": "tools/call",
               "params": {"name": args.tool, "arguments": params}})
-        resp = recv()
+        resp = recv(args.timeout)
         if resp is None:
             print("无响应", flush=True)
         elif "timeout" in resp:
